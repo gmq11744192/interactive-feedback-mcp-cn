@@ -1,61 +1,60 @@
-# Interactive Feedback MCP
+# 交互式反馈 MCP
 
-Developed by Fábio Ferreira ([@fabiomlferreira](https://x.com/fabiomlferreira)).
-Check out [dotcursorrules.com](https://dotcursorrules.com/) for more AI development enhancements.
+由 Fábio Ferreira ([@fabiomlferreira](https://x.com/fabiomlferreira)) 开发。
+查看 [dotcursorrules.com](https://dotcursorrules.com/) 获取更多 AI 开发增强工具。
 
-Simple [MCP Server](https://modelcontextprotocol.io/) to enable a human-in-the-loop workflow in AI-assisted development tools like [Cursor](https://www.cursor.com). This server allows you to run commands, view their output, and provide textual feedback directly to the AI. It is also compatible with [Cline](https://cline.bot) and [Windsurf](https://windsurf.com).
+这是一个简单的 [MCP 服务器](https://modelcontextprotocol.io/)，用于在 AI 辅助开发工具（如 [Cursor](https://www.cursor.com)）中实现人机协作工作流。该服务器允许您运行命令、查看输出结果，并直接向 AI 提供文本反馈。它还兼容 [Cline](https://cline.bot) 和 [Windsurf](https://windsurf.com)。
 
-![Interactive Feedback UI - Main View](https://github.com/noopstudios/interactive-feedback-mcp/blob/main/.github/interactive_feedback_1.jpg?raw=true)
-![Interactive Feedback UI - Command Section Open](https://github.com/noopstudios/interactive-feedback-mcp/blob/main/.github/interactive_feedback_2.jpg)
+![交互式反馈 UI - 主视图](test.png)
 
-## Prompt Engineering
+## 提示工程
 
-For the best results, add the following to your custom prompt in your AI assistant, you should add it on a rule or directly in the prompt (e.g., Cursor):
+为获得最佳效果，请将以下内容添加到 AI 助手的自定义提示中，您应该将其添加到规则中或直接添加到提示中（例如，Cursor）：
 
-> Whenever you want to ask a question, always call the MCP `interactive_feedback`.  
-> Whenever you’re about to complete a user request, call the MCP `interactive_feedback` instead of simply ending the process.
-> Keep calling MCP until the user’s feedback is empty, then end the request.
+> 当您想要提问时，始终调用 MCP `interactive_feedback`。  
+> 当您即将完成用户请求时，调用 MCP `interactive_feedback` 而不是简单地结束流程。
+> 持续调用 MCP 直到用户的反馈为空，然后结束请求。
 
-This will ensure your AI assistant uses this MCP server to request user feedback before marking the task as completed.
+这将确保您的 AI 助手在将任务标记为已完成之前，使用此 MCP 服务器请求用户反馈。
 
-## 💡 Why Use This?
-By guiding the assistant to check in with the user instead of branching out into speculative, high-cost tool calls, this module can drastically reduce the number of premium requests (e.g., OpenAI tool invocations) on platforms like Cursor. In some cases, it helps consolidate what would be up to 25 tool calls into a single, feedback-aware request — saving resources and improving performance.
+## 💡 为什么使用它？
+通过指导助手与用户确认而不是分散到推测性的高成本工具调用中，该模块可以大幅减少平台（如 Cursor）上的高级请求数量（例如，OpenAI 工具调用）。在某些情况下，它有助于将多达 25 个工具调用整合为单个具有反馈意识的请求 —— 节省资源并提高性能。
 
-## Configuration
+## 配置
 
-This MCP server uses Qt's `QSettings` to store configuration on a per-project basis. This includes:
-*   The command to run.
-*   Whether to execute the command automatically on the next startup for that project (see "Execute automatically on next run" checkbox).
-*   The visibility state (shown/hidden) of the command section (this is saved immediately when toggled).
-*   Window geometry and state (general UI preferences).
+此 MCP 服务器使用 Qt 的 `QSettings` 按项目存储配置。这包括：
+*   要运行的命令。
+*   是否在该项目的下次启动时自动执行命令（参见"在下次运行时自动执行"复选框）。
+*   命令部分的可见状态（显示/隐藏）（这在切换时立即保存）。
+*   窗口几何形状和状态（一般 UI 首选项）。
 
-These settings are typically stored in platform-specific locations (e.g., registry on Windows, plist files on macOS, configuration files in `~/.config` or `~/.local/share` on Linux) under an organization name "FabioFerreira" and application name "InteractiveFeedbackMCP", with a unique group for each project directory.
+这些设置通常存储在特定于平台的位置（例如，Windows 上的注册表，macOS 上的 plist 文件，Linux 上的 `~/.config` 或 `~/.local/share` 中的配置文件），组织名称为 "FabioFerreira"，应用程序名称为 "InteractiveFeedbackMCP"，每个项目目录有一个唯一组。
 
-The "Save Configuration" button in the UI primarily saves the current command typed into the command input field and the state of the "Execute automatically on next run" checkbox for the active project. The visibility of the command section is saved automatically when you toggle it. General window size and position are saved when the application closes.
+UI 中的"保存配置"按钮主要保存当前输入到命令输入字段中的命令，以及活动项目的"在下次运行时自动执行"复选框的状态。命令部分的可见性在您切换时自动保存。窗口大小和位置在应用程序关闭时保存。
 
-## Installation (Cursor)
+## 安装 (Cursor)
 
-![Instalation on Cursor](https://github.com/noopstudios/interactive-feedback-mcp/blob/main/.github/cursor-example.jpg?raw=true)
+![在 Cursor 上安装](https://github.com/noopstudios/interactive-feedback-mcp/blob/main/.github/cursor-example.jpg?raw=true)
 
-1.  **Prerequisites:**
-    *   Python 3.11 or newer.
-    *   [uv](https://github.com/astral-sh/uv) (Python package manager). Install it with:
+1.  **先决条件：**
+    *   Python 3.11 或更新版本。
+    *   [uv](https://github.com/astral-sh/uv) (Python 包管理器)。使用以下命令安装：
         *   Windows: `pip install uv`
         *   Linux/Mac: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2.  **Get the code:**
-    *   Clone this repository:
+2.  **获取代码：**
+    *   克隆此仓库：
         `git clone https://github.com/noopstudios/interactive-feedback-mcp.git`
-    *   Or download the source code.
-3.  **Navigate to the directory:**
+    *   或下载源代码。
+3.  **导航到目录：**
     *   `cd path/to/interactive-feedback-mcp`
-4.  **Install dependencies:**
-    *   `uv sync` (this creates a virtual environment and installs packages)
-5.  **Run the MCP Server:**
+4.  **安装依赖：**
+    *   `uv sync` (这会创建一个虚拟环境并安装包)
+5.  **运行 MCP 服务器：**
     *   `uv run server.py`
-6.  **Configure in Cursor:**
-    *   Cursor typically allows specifying custom MCP servers in its settings. You'll need to point Cursor to this running server. The exact mechanism might vary, so consult Cursor's documentation for adding custom MCPs.
-    *   **Manual Configuration (e.g., via `mcp.json`)**
-        **Remember to change the `/Users/fabioferreira/Dev/scripts/interactive-feedback-mcp` path to the actual path where you cloned the repository on your system.**
+6.  **在 Cursor 中配置：**
+    *   Cursor 通常允许在其设置中指定自定义 MCP 服务器。您需要将 Cursor 指向此运行中的服务器。具体机制可能有所不同，因此请参阅 Cursor 的文档以添加自定义 MCP。
+    *   **手动配置（例如，通过 `mcp.json`）**
+        **记得将 `/Users/fabioferreira/Dev/scripts/interactive-feedback-mcp` 路径更改为您系统上克隆仓库的实际路径。**
 
         ```json
         {
@@ -76,25 +75,25 @@ The "Save Configuration" button in the UI primarily saves the current command ty
           }
         }
         ```
-    *   You might use a server identifier like `interactive-feedback-mcp` when configuring it in Cursor.
+    *   在 Cursor 中配置时，您可以使用类似 `interactive-feedback-mcp` 的服务器标识符。
 
-### For Cline / Windsurf
+### 对于 Cline / Windsurf
 
-Similar setup principles apply. You would configure the server command (e.g., `uv run server.py` with the correct `--directory` argument pointing to the project directory) in the respective tool's MCP settings, using `interactive-feedback-mcp` as the server identifier.
+适用类似的设置原则。您需要在相应工具的 MCP 设置中配置服务器命令（例如，带有正确的 `--directory` 参数指向项目目录的 `uv run server.py`），使用 `interactive-feedback-mcp` 作为服务器标识符。
 
-## Development
+## 开发
 
-To run the server in development mode with a web interface for testing:
+要在开发模式下运行带有 Web 界面进行测试的服务器：
 
 ```sh
 uv run fastmcp dev server.py
 ```
 
-This will open a web interface and allow you to interact with the MCP tools for testing.
+这将打开一个 Web 界面，允许您与 MCP 工具交互进行测试。
 
-## Available tools
+## 可用工具
 
-Here's an example of how the AI assistant would call the `interactive_feedback` tool:
+以下是 AI 助手如何调用 `interactive_feedback` 工具的示例：
 
 ```xml
 <use_mcp_tool>
@@ -103,16 +102,16 @@ Here's an example of how the AI assistant would call the `interactive_feedback` 
   <arguments>
     {
       "project_directory": "/path/to/your/project",
-      "summary": "I've implemented the changes you requested and refactored the main module."
+      "summary": "我已实现了您请求的更改并重构了主模块。"
     }
   </arguments>
 </use_mcp_tool>
 ```
 
-## Acknowledgements & Contact
+## 致谢与联系
 
-If you find this Interactive Feedback MCP useful, the best way to show appreciation is by following Fábio Ferreira on [X @fabiomlferreira](https://x.com/fabiomlferreira).
+如果您发现这个交互式反馈 MCP 有用，最好的表达感谢方式是在 [X @fabiomlferreira](https://x.com/fabiomlferreira) 上关注 Fábio Ferreira。
 
-For any questions, suggestions, or if you just want to share how you're using it, feel free to reach out on X!
+如有任何问题、建议，或者只是想分享您如何使用它，请随时在 X 上联系！
 
-Also, check out [dotcursorrules.com](https://dotcursorrules.com/) for more resources on enhancing your AI-assisted development workflow.
+另外，查看 [dotcursorrules.com](https://dotcursorrules.com/) 获取更多关于增强 AI 辅助开发工作流的资源。

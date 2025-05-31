@@ -1,203 +1,66 @@
-# Interactive Feedback MCP UI
-# Developed by Fábio Ferreira (https://x.com/fabiomlferreira)
-# Inspired by/related to dotcursorrules.com (https://dotcursorrules.com/)
+# 交互式反馈界面
+# 原作者: Fábio Ferreira (https://x.com/fabiomlferreira)
+# 灵感来源: dotcursorrules.com (https://dotcursorrules.com/)
+# 由Pau Oliva (https://x.com/pof)增强，基于 https://github.com/ttommyth/interactive-mcp 的创意
 import os
 import sys
 import json
-import psutil
 import argparse
-import subprocess
-import threading
-import hashlib
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, List
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox
+    QLabel, QLineEdit, QPushButton, QCheckBox, QTextEdit, QGroupBox,
+    QFrame, QScrollArea, QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings
-from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QFont, QFontDatabase, QPalette, QColor
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QSettings, QPoint, QRect, QEvent
+from PySide6.QtGui import QTextCursor, QIcon, QKeyEvent, QPalette, QColor, QFont, QFontDatabase, QPainter, QPen, QPainterPath, QMouseEvent
 
 class FeedbackResult(TypedDict):
-    command_logs: str
     interactive_feedback: str
-
-class FeedbackConfig(TypedDict):
-    run_command: str
-    execute_automatically: bool
-
-def set_dark_title_bar(widget: QWidget, dark_title_bar: bool) -> None:
-    # Ensure we're on Windows
-    if sys.platform != "win32":
-        return
-
-    from ctypes import windll, c_uint32, byref
-
-    # Get Windows build number
-    build_number = sys.getwindowsversion().build
-    if build_number < 17763:  # Windows 10 1809 minimum
-        return
-
-    # Check if the widget's property already matches the setting
-    dark_prop = widget.property("DarkTitleBar")
-    if dark_prop is not None and dark_prop == dark_title_bar:
-        return
-
-    # Set the property (True if dark_title_bar != 0, False otherwise)
-    widget.setProperty("DarkTitleBar", dark_title_bar)
-
-    # Load dwmapi.dll and call DwmSetWindowAttribute
-    dwmapi = windll.dwmapi
-    hwnd = widget.winId()  # Get the window handle
-    attribute = 20 if build_number >= 18985 else 19  # Use newer attribute for newer builds
-    c_dark_title_bar = c_uint32(dark_title_bar)  # Convert to C-compatible uint32
-    dwmapi.DwmSetWindowAttribute(hwnd, attribute, byref(c_dark_title_bar), 4)
-
-    # HACK: Create a 1x1 pixel frameless window to force redraw
-    temp_widget = QWidget(None, Qt.FramelessWindowHint)
-    temp_widget.resize(1, 1)
-    temp_widget.move(widget.pos())
-    temp_widget.show()
-    temp_widget.deleteLater()  # Safe deletion in Qt event loop
 
 def get_dark_mode_palette(app: QApplication):
     darkPalette = app.palette()
-    darkPalette.setColor(QPalette.Window, QColor(53, 53, 53))
-    darkPalette.setColor(QPalette.WindowText, Qt.white)
+    # 使用更现代的深色主题颜色方案
+    darkPalette.setColor(QPalette.Window, QColor(45, 45, 48))
+    darkPalette.setColor(QPalette.WindowText, QColor(225, 225, 225))
     darkPalette.setColor(QPalette.Disabled, QPalette.WindowText, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.Base, QColor(42, 42, 42))
-    darkPalette.setColor(QPalette.AlternateBase, QColor(66, 66, 66))
-    darkPalette.setColor(QPalette.ToolTipBase, QColor(53, 53, 53))
-    darkPalette.setColor(QPalette.ToolTipText, Qt.white)
-    darkPalette.setColor(QPalette.Text, Qt.white)
+    darkPalette.setColor(QPalette.Base, QColor(36, 36, 39))
+    darkPalette.setColor(QPalette.AlternateBase, QColor(56, 56, 59))
+    darkPalette.setColor(QPalette.ToolTipBase, QColor(45, 45, 48))
+    darkPalette.setColor(QPalette.ToolTipText, QColor(225, 225, 225))
+    darkPalette.setColor(QPalette.Text, QColor(225, 225, 225))
     darkPalette.setColor(QPalette.Disabled, QPalette.Text, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.Dark, QColor(35, 35, 35))
-    darkPalette.setColor(QPalette.Shadow, QColor(20, 20, 20))
-    darkPalette.setColor(QPalette.Button, QColor(53, 53, 53))
-    darkPalette.setColor(QPalette.ButtonText, Qt.white)
+    darkPalette.setColor(QPalette.Dark, QColor(30, 30, 33))
+    darkPalette.setColor(QPalette.Shadow, QColor(18, 18, 20))
+    darkPalette.setColor(QPalette.Button, QColor(45, 45, 48))
+    darkPalette.setColor(QPalette.ButtonText, QColor(225, 225, 225))
     darkPalette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.BrightText, Qt.red)
-    darkPalette.setColor(QPalette.Link, QColor(42, 130, 218))
-    darkPalette.setColor(QPalette.Highlight, QColor(42, 130, 218))
-    darkPalette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(80, 80, 80))
-    darkPalette.setColor(QPalette.HighlightedText, Qt.white)
+    darkPalette.setColor(QPalette.BrightText, QColor(255, 100, 100))
+    darkPalette.setColor(QPalette.Link, QColor(42, 140, 218))
+    darkPalette.setColor(QPalette.Highlight, QColor(42, 140, 218))
+    darkPalette.setColor(QPalette.Disabled, QPalette.Highlight, QColor(75, 75, 78))
+    darkPalette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
     darkPalette.setColor(QPalette.Disabled, QPalette.HighlightedText, QColor(127, 127, 127))
-    darkPalette.setColor(QPalette.PlaceholderText, QColor(127, 127, 127))
+    darkPalette.setColor(QPalette.PlaceholderText, QColor(150, 150, 150))
     return darkPalette
-
-def kill_tree(process: subprocess.Popen):
-    killed: list[psutil.Process] = []
-    parent = psutil.Process(process.pid)
-    for proc in parent.children(recursive=True):
-        try:
-            proc.kill()
-            killed.append(proc)
-        except psutil.Error:
-            pass
-    try:
-        parent.kill()
-    except psutil.Error:
-        pass
-    killed.append(parent)
-
-    # Terminate any remaining processes
-    for proc in killed:
-        try:
-            if proc.is_running():
-                proc.terminate()
-        except psutil.Error:
-            pass
-
-def get_user_environment() -> dict[str, str]:
-    if sys.platform != "win32":
-        return os.environ.copy()
-
-    import ctypes
-    from ctypes import wintypes
-
-    # Load required DLLs
-    advapi32 = ctypes.WinDLL("advapi32")
-    userenv = ctypes.WinDLL("userenv")
-    kernel32 = ctypes.WinDLL("kernel32")
-
-    # Constants
-    TOKEN_QUERY = 0x0008
-
-    # Function prototypes
-    OpenProcessToken = advapi32.OpenProcessToken
-    OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
-    OpenProcessToken.restype = wintypes.BOOL
-
-    CreateEnvironmentBlock = userenv.CreateEnvironmentBlock
-    CreateEnvironmentBlock.argtypes = [ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.BOOL]
-    CreateEnvironmentBlock.restype = wintypes.BOOL
-
-    DestroyEnvironmentBlock = userenv.DestroyEnvironmentBlock
-    DestroyEnvironmentBlock.argtypes = [wintypes.LPVOID]
-    DestroyEnvironmentBlock.restype = wintypes.BOOL
-
-    GetCurrentProcess = kernel32.GetCurrentProcess
-    GetCurrentProcess.argtypes = []
-    GetCurrentProcess.restype = wintypes.HANDLE
-
-    CloseHandle = kernel32.CloseHandle
-    CloseHandle.argtypes = [wintypes.HANDLE]
-    CloseHandle.restype = wintypes.BOOL
-
-    # Get process token
-    token = wintypes.HANDLE()
-    if not OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(token)):
-        raise RuntimeError("Failed to open process token")
-
-    try:
-        # Create environment block
-        environment = ctypes.c_void_p()
-        if not CreateEnvironmentBlock(ctypes.byref(environment), token, False):
-            raise RuntimeError("Failed to create environment block")
-
-        try:
-            # Convert environment block to list of strings
-            result = {}
-            env_ptr = ctypes.cast(environment, ctypes.POINTER(ctypes.c_wchar))
-            offset = 0
-
-            while True:
-                # Get string at current offset
-                current_string = ""
-                while env_ptr[offset] != "\0":
-                    current_string += env_ptr[offset]
-                    offset += 1
-
-                # Skip null terminator
-                offset += 1
-
-                # Break if we hit double null terminator
-                if not current_string:
-                    break
-
-                equal_index = current_string.index("=")
-                if equal_index == -1:
-                    continue
-
-                key = current_string[:equal_index]
-                value = current_string[equal_index + 1:]
-                result[key] = value
-
-            return result
-
-        finally:
-            DestroyEnvironmentBlock(environment)
-
-    finally:
-        CloseHandle(token)
 
 class FeedbackTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 8px;
+                background-color: #2d2d30;
+                color: #e1e1e1;
+            }
+        """)
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier:
-            # Find the parent FeedbackUI instance and call submit
+            # 找到父级 FeedbackUI 实例并调用提交
             parent = self.parent()
             while parent and not isinstance(parent, FeedbackUI):
                 parent = parent.parent()
@@ -206,361 +69,381 @@ class FeedbackTextEdit(QTextEdit):
         else:
             super().keyPressEvent(event)
 
-class LogSignals(QObject):
-    append_log = Signal(str)
+# 移除了标题栏类
 
 class FeedbackUI(QMainWindow):
-    def __init__(self, project_directory: str, prompt: str):
-        super().__init__()
-        self.project_directory = project_directory
+    def __init__(self, prompt: str, predefined_options: Optional[List[str]] = None):
+        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.prompt = prompt
+        self.predefined_options = predefined_options or []
 
-        self.process: Optional[subprocess.Popen] = None
-        self.log_buffer = []
         self.feedback_result = None
-        self.log_signals = LogSignals()
-        self.log_signals.append_log.connect(self._append_log)
-
-        self.setWindowTitle("Interactive Feedback MCP")
+        self.border_radius = 8  # 窗口圆角半径
+        self.old_pos = None  # 用于实现窗口拖动
+        
+        # 设置透明背景以便应用圆角
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
         script_dir = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(script_dir, "images", "feedback.png")
         self.setWindowIcon(QIcon(icon_path))
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         
         self.settings = QSettings("InteractiveFeedbackMCP", "InteractiveFeedbackMCP")
         
-        # Load general UI settings for the main window (geometry, state)
+        # 设置窗口初始大小为较小的值，以便后续自动调整
+        self.resize(600, 400)
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - 600) // 2
+        y = (screen.height() - 400) // 2
+        self.move(x, y)
+        
+        # 尝试恢复保存的窗口状态
         self.settings.beginGroup("MainWindow_General")
         geometry = self.settings.value("geometry")
         if geometry:
             self.restoreGeometry(geometry)
-        else:
-            self.resize(800, 600)
-            screen = QApplication.primaryScreen().geometry()
-            x = (screen.width() - 800) // 2
-            y = (screen.height() - 600) // 2
-            self.move(x, y)
         state = self.settings.value("windowState")
         if state:
             self.restoreState(state)
-        self.settings.endGroup() # End "MainWindow_General" group
-        
-        # Load project-specific settings (command, auto-execute, command section visibility)
-        self.project_group_name = get_project_settings_group(self.project_directory)
-        self.settings.beginGroup(self.project_group_name)
-        loaded_run_command = self.settings.value("run_command", "", type=str)
-        loaded_execute_auto = self.settings.value("execute_automatically", False, type=bool)
-        command_section_visible = self.settings.value("commandSectionVisible", False, type=bool)
-        self.settings.endGroup() # End project-specific group
-        
-        self.config: FeedbackConfig = {
-            "run_command": loaded_run_command,
-            "execute_automatically": loaded_execute_auto
-        }
+        self.settings.endGroup() # 结束 "MainWindow_General" 组
 
-        self._create_ui() # self.config is used here to set initial values
+        # 设置全局样式
+        self.setup_fonts()
+        self.setStyleSheet("""
+            QMainWindow {
+                background: transparent;
+            }
+            QGroupBox {
+                border: 1px solid #444;
+                border-radius: 6px;
+                margin-top: 12px;
+                font-weight: bold;
+                padding: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 10px;
+                padding: 0 5px;
+                color: #e1e1e1;
+            }
+            QLabel {
+                color: #e1e1e1;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #0078d7;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1a88e1;
+            }
+            QPushButton:pressed {
+                background-color: #0067b8;
+            }
+            QCheckBox {
+                color: #e1e1e1;
+                padding: 5px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QFrame[frameShape="4"] { /* HLine */
+                color: #555;
+                margin: 5px 0;
+            }
+            QScrollArea, QWidget#centralWidget {
+                border: none;
+                background-color: transparent;
+            }
+        """)
 
-        # Set command section visibility AFTER _create_ui has created relevant widgets
-        self.command_group.setVisible(command_section_visible)
-        if command_section_visible:
-            self.toggle_command_button.setText("Hide Command Section")
+        self._create_ui()
+        # 添加窗口阴影
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(20)
+        self.shadow.setColor(QColor(0, 0, 0, 80))
+        self.shadow.setOffset(0, 2)
+        self.centralWidget().setGraphicsEffect(self.shadow)
+        
+        # 安装事件过滤器以处理鼠标拖动
+        self.installEventFilter(self)
+
+    def setup_fonts(self):
+        # 设置中文友好的字体
+        font_id = QFontDatabase.addApplicationFont("Microsoft YaHei")
+        if font_id != -1:
+            font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
         else:
-            self.toggle_command_button.setText("Show Command Section")
-
-        set_dark_title_bar(self, True)
-
-        if self.config.get("execute_automatically", False):
-            self._run_command()
-
-    def _format_windows_path(self, path: str) -> str:
-        if sys.platform == "win32":
-            # Convert forward slashes to backslashes
-            path = path.replace("/", "\\")
-            # Capitalize drive letter if path starts with x:\
-            if len(path) >= 2 and path[1] == ":" and path[0].isalpha():
-                path = path[0].upper() + path[1:]
-        return path
+            # 回退使用系统默认字体
+            font_family = "微软雅黑, Microsoft YaHei, 宋体, SimSun, sans-serif"
+        
+        font = QFont(font_family, 10)
+        QApplication.setFont(font)
 
     def _create_ui(self):
         central_widget = QWidget()
+        central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-
-        # Toggle Command Section Button
-        self.toggle_command_button = QPushButton("Show Command Section")
-        self.toggle_command_button.clicked.connect(self._toggle_command_section)
-        layout.addWidget(self.toggle_command_button)
-
-        # Command section
-        self.command_group = QGroupBox("Command")
-        command_layout = QVBoxLayout(self.command_group)
-
-        # Working directory label
-        formatted_path = self._format_windows_path(self.project_directory)
-        working_dir_label = QLabel(f"Working directory: {formatted_path}")
-        command_layout.addWidget(working_dir_label)
-
-        # Command input row
-        command_input_layout = QHBoxLayout()
-        self.command_entry = QLineEdit()
-        self.command_entry.setText(self.config["run_command"])
-        self.command_entry.returnPressed.connect(self._run_command)
-        self.command_entry.textChanged.connect(self._update_config)
-        self.run_button = QPushButton("&Run")
-        self.run_button.clicked.connect(self._run_command)
-
-        command_input_layout.addWidget(self.command_entry)
-        command_input_layout.addWidget(self.run_button)
-        command_layout.addLayout(command_input_layout)
-
-        # Auto-execute and save config row
-        auto_layout = QHBoxLayout()
-        self.auto_check = QCheckBox("Execute automatically on next run")
-        self.auto_check.setChecked(self.config.get("execute_automatically", False))
-        self.auto_check.stateChanged.connect(self._update_config)
-
-        save_button = QPushButton("&Save Configuration")
-        save_button.clicked.connect(self._save_config)
-
-        auto_layout.addWidget(self.auto_check)
-        auto_layout.addStretch()
-        auto_layout.addWidget(save_button)
-        command_layout.addLayout(auto_layout)
-
-        # Console section (now part of command_group)
-        console_group = QGroupBox("Console")
-        console_layout_internal = QVBoxLayout(console_group)
-        console_group.setMinimumHeight(200)
-
-        # Log text area
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        font = QFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
-        font.setPointSize(9)
-        self.log_text.setFont(font)
-        console_layout_internal.addWidget(self.log_text)
-
-        # Clear button
-        button_layout = QHBoxLayout()
-        self.clear_button = QPushButton("&Clear")
-        self.clear_button.clicked.connect(self.clear_logs)
-        button_layout.addStretch()
-        button_layout.addWidget(self.clear_button)
-        console_layout_internal.addLayout(button_layout)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(20, 10, 20, 20)
+        main_layout.setSpacing(10)
         
-        command_layout.addWidget(console_group)
+        # 标题部分
+        title_label = QLabel("请提供您的反馈")
+        title_label.setStyleSheet("""
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-bottom: 10px;
+        """)
+        title_container_layout = QHBoxLayout()
+        title_container_layout.setContentsMargins(0, 0, 0, 0)
+        title_container_layout.addWidget(title_label)
+        title_container_layout.addStretch()
+        
+        main_layout.addLayout(title_container_layout)
 
-        self.command_group.setVisible(False) 
-        layout.addWidget(self.command_group)
+        # 创建反馈内容容器（不使用滚动区域）
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background-color: transparent;")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(15)
 
-        # Feedback section with adjusted height
-        self.feedback_group = QGroupBox("Feedback")
+        # 反馈部分
+        self.feedback_group = QGroupBox("反馈内容")
         feedback_layout = QVBoxLayout(self.feedback_group)
+        feedback_layout.setSpacing(15)
 
-        # Short description label (from self.prompt)
+        # 描述标签 (来自 self.prompt) - 支持多行
         self.description_label = QLabel(self.prompt)
         self.description_label.setWordWrap(True)
+        self.description_label.setStyleSheet("padding: 5px 0;")
         feedback_layout.addWidget(self.description_label)
 
+        # 添加预定义选项（如果有）
+        self.option_checkboxes = []
+        if self.predefined_options and len(self.predefined_options) > 0:
+            options_frame = QFrame()
+            options_layout = QVBoxLayout(options_frame)
+            options_layout.setContentsMargins(0, 10, 0, 10)
+            options_layout.setSpacing(8)
+            
+            for option in self.predefined_options:
+                checkbox = QCheckBox(option)
+                self.option_checkboxes.append(checkbox)
+                options_layout.addWidget(checkbox)
+            
+            feedback_layout.addWidget(options_frame)
+            
+            # 添加分隔线
+            separator = QFrame()
+            separator.setFrameShape(QFrame.HLine)
+            separator.setFrameShadow(QFrame.Sunken)
+            feedback_layout.addWidget(separator)
+
+        # 自由文本反馈
+        feedback_label = QLabel("详细反馈:")
+        feedback_layout.addWidget(feedback_label)
+        
         self.feedback_text = FeedbackTextEdit()
         font_metrics = self.feedback_text.fontMetrics()
         row_height = font_metrics.height()
-        # Calculate height for 5 lines + some padding for margins
-        padding = self.feedback_text.contentsMargins().top() + self.feedback_text.contentsMargins().bottom() + 5 # 5 is extra vertical padding
-        self.feedback_text.setMinimumHeight(5 * row_height + padding)
+        # 计算2-3行文本的高度 + 一些内边距，减少默认高度
+        padding = self.feedback_text.contentsMargins().top() + self.feedback_text.contentsMargins().bottom() + 5
+        self.feedback_text.setMinimumHeight(2.5 * row_height + padding)
 
-        self.feedback_text.setPlaceholderText("Enter your feedback here (Ctrl+Enter to submit)")
-        submit_button = QPushButton("&Send Feedback (Ctrl+Enter)")
+        self.feedback_text.setPlaceholderText("请在此输入您的反馈（按Ctrl+Enter提交）")
+        submit_button = QPushButton("发送反馈")
         submit_button.clicked.connect(self._submit_feedback)
+        submit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d7;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1a88e1;
+            }
+            QPushButton:pressed {
+                background-color: #0067b8;
+            }
+        """)
+        
+        # 添加"无需反馈已解决了"按钮
+        resolved_button = QPushButton("已解决！")
+        resolved_button.clicked.connect(self._submit_resolved)
+        resolved_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #34b754;
+            }
+            QPushButton:pressed {
+                background-color: #218838;
+            }
+        """)
 
         feedback_layout.addWidget(self.feedback_text)
-        feedback_layout.addWidget(submit_button)
-
-        # Set minimum height for feedback_group to accommodate its contents
-        # This will be based on the description label and the 5-line feedback_text
-        self.feedback_group.setMinimumHeight(self.description_label.sizeHint().height() + self.feedback_text.minimumHeight() + submit_button.sizeHint().height() + feedback_layout.spacing() * 2 + feedback_layout.contentsMargins().top() + feedback_layout.contentsMargins().bottom() + 10) # 10 for extra padding
-
-        # Add widgets in a specific order
-        layout.addWidget(self.feedback_group)
-
-        # Credits/Contact Label
-        contact_label = QLabel('Need to improve? Contact Fábio Ferreira on <a href="https://x.com/fabiomlferreira">X.com</a> or visit <a href="https://dotcursorrules.com/">dotcursorrules.com</a>')
-        contact_label.setOpenExternalLinks(True)
-        contact_label.setAlignment(Qt.AlignCenter)
-        # Optionally, make font a bit smaller and less prominent
-        # contact_label_font = contact_label.font()
-        # contact_label_font.setPointSize(contact_label_font.pointSize() - 1)
-        # contact_label.setFont(contact_label_font)
-        contact_label.setStyleSheet("font-size: 9pt; color: #cccccc;") # Light gray for dark theme
-        layout.addWidget(contact_label)
-
-    def _toggle_command_section(self):
-        is_visible = self.command_group.isVisible()
-        self.command_group.setVisible(not is_visible)
-        if not is_visible:
-            self.toggle_command_button.setText("Hide Command Section")
-        else:
-            self.toggle_command_button.setText("Show Command Section")
         
-        # Immediately save the visibility state for this project
-        self.settings.beginGroup(self.project_group_name)
-        self.settings.setValue("commandSectionVisible", self.command_group.isVisible())
-        self.settings.endGroup()
+        # 按钮容器，添加右对齐
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.addStretch()
+        button_layout.addWidget(resolved_button)
+        button_layout.addWidget(submit_button)
+        
+        feedback_layout.addLayout(button_layout)
 
-        # Adjust window height only
-        new_height = self.centralWidget().sizeHint().height()
-        if self.command_group.isVisible() and self.command_group.layout().sizeHint().height() > 0 :
-             # if command group became visible and has content, ensure enough height
-             min_content_height = self.command_group.layout().sizeHint().height() + self.feedback_group.minimumHeight() + self.toggle_command_button.height() + layout().spacing() * 2
-             new_height = max(new_height, min_content_height)
+        # 为feedback_group设置最小高度
+        self.feedback_group.setMinimumHeight(
+            self.description_label.sizeHint().height() + 
+            self.feedback_text.minimumHeight() + 
+            submit_button.sizeHint().height() + 
+            feedback_layout.spacing() * 3 + 
+            feedback_layout.contentsMargins().top() + 
+            feedback_layout.contentsMargins().bottom() + 
+            40  # 额外空间
+        )
 
-        current_width = self.width()
-        self.resize(current_width, new_height)
-
-    def _update_config(self):
-        self.config["run_command"] = self.command_entry.text()
-        self.config["execute_automatically"] = self.auto_check.isChecked()
-
-    def _append_log(self, text: str):
-        self.log_buffer.append(text)
-        self.log_text.append(text.rstrip())
-        cursor = self.log_text.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.log_text.setTextCursor(cursor)
-
-    def _check_process_status(self):
-        if self.process and self.process.poll() is not None:
-            # Process has terminated
-            exit_code = self.process.poll()
-            self._append_log(f"\nProcess exited with code {exit_code}\n")
-            self.run_button.setText("&Run")
-            self.process = None
-            self.activateWindow()
-            self.feedback_text.setFocus()
-
-    def _run_command(self):
-        if self.process:
-            kill_tree(self.process)
-            self.process = None
-            self.run_button.setText("&Run")
-            return
-
-        # Clear the log buffer but keep UI logs visible
-        self.log_buffer = []
-
-        command = self.command_entry.text()
-        if not command:
-            self._append_log("Please enter a command to run\n")
-            return
-
-        self._append_log(f"$ {command}\n")
-        self.run_button.setText("Sto&p")
-
-        try:
-            self.process = subprocess.Popen(
-                command,
-                shell=True,
-                cwd=self.project_directory,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=get_user_environment(),
-                text=True,
-                bufsize=1,
-                encoding="utf-8",
-                errors="ignore",
-                close_fds=True,
-            )
-
-            def read_output(pipe):
-                for line in iter(pipe.readline, ""):
-                    self.log_signals.append_log.emit(line)
-
-            threading.Thread(
-                target=read_output,
-                args=(self.process.stdout,),
-                daemon=True
-            ).start()
-
-            threading.Thread(
-                target=read_output,
-                args=(self.process.stderr,),
-                daemon=True
-            ).start()
-
-            # Start process status checking
-            self.status_timer = QTimer()
-            self.status_timer.timeout.connect(self._check_process_status)
-            self.status_timer.start(100)  # Check every 100ms
-
-        except Exception as e:
-            self._append_log(f"Error running command: {str(e)}\n")
-            self.run_button.setText("&Run")
+        # 添加组件到内容布局
+        content_layout.addWidget(self.feedback_group)
+        
+        # 将内容添加到主布局
+        main_layout.addWidget(content_widget)
+        
+        # 窗口显示后自动调整大小以适应内容
+        QTimer.singleShot(0, self.adjustSize)
 
     def _submit_feedback(self):
+        feedback_text = self.feedback_text.toPlainText().strip()
+        selected_options = []
+        
+        # 获取选中的预定义选项（如果有）
+        if self.option_checkboxes:
+            for i, checkbox in enumerate(self.option_checkboxes):
+                if checkbox.isChecked():
+                    selected_options.append(self.predefined_options[i])
+        
+        # 组合选中的选项和反馈文本
+        final_feedback_parts = []
+        
+        # 添加选中的选项
+        if selected_options:
+            final_feedback_parts.append("选中选项: " + "; ".join(selected_options))
+        
+        # 添加用户的文本反馈
+        if feedback_text:
+            final_feedback_parts.append(feedback_text)
+            
+        # 如果两部分都存在，用换行符连接
+        final_feedback = "\n\n".join(final_feedback_parts)
+            
         self.feedback_result = FeedbackResult(
-            logs="".join(self.log_buffer),
-            interactive_feedback=self.feedback_text.toPlainText().strip(),
+            interactive_feedback=final_feedback,
         )
         self.close()
 
-    def clear_logs(self):
-        self.log_buffer = []
-        self.log_text.clear()
-
-    def _save_config(self):
-        # Save run_command and execute_automatically to QSettings under project group
-        self.settings.beginGroup(self.project_group_name)
-        self.settings.setValue("run_command", self.config["run_command"])
-        self.settings.setValue("execute_automatically", self.config["execute_automatically"])
-        self.settings.endGroup()
-        self._append_log("Configuration saved for this project.\n")
+    def _submit_resolved(self):
+        """提交'问题已解决'的反馈"""
+        self.feedback_result = FeedbackResult(
+            interactive_feedback="问题已解决",
+        )
+        self.close()
 
     def closeEvent(self, event):
-        # Save general UI settings for the main window (geometry, state)
-        self.settings.beginGroup("MainWindow_General")
-        self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("windowState", self.saveState())
-        self.settings.endGroup()
+        # 保存主窗口的通用UI设置(几何尺寸、状态)
+        try:
+            self.settings.beginGroup("MainWindow_General")
+            self.settings.setValue("geometry", self.saveGeometry())
+            self.settings.setValue("windowState", self.saveState())
+            self.settings.endGroup()
+            self.settings.sync()  # 确保设置立即保存
+        except Exception as e:
+            print(f"保存窗口设置时出错: {str(e)}")
 
-        # Save project-specific command section visibility (this is now slightly redundant due to immediate save in toggle, but harmless)
-        self.settings.beginGroup(self.project_group_name)
-        self.settings.setValue("commandSectionVisible", self.command_group.isVisible())
-        self.settings.endGroup()
-
-        if self.process:
-            kill_tree(self.process)
         super().closeEvent(event)
 
     def run(self) -> FeedbackResult:
+        # 显示窗口
         self.show()
+        
+        # 延迟调整窗口大小以适应内容
+        QTimer.singleShot(10, self.adjustSize)
+        
         QApplication.instance().exec()
 
-        if self.process:
-            kill_tree(self.process)
-
         if not self.feedback_result:
-            return FeedbackResult(logs="".join(self.log_buffer), interactive_feedback="")
+            return FeedbackResult(interactive_feedback="")
 
         return self.feedback_result
 
-def get_project_settings_group(project_dir: str) -> str:
-    # Create a safe, unique group name from the project directory path
-    # Using only the last component + hash of full path to keep it somewhat readable but unique
-    basename = os.path.basename(os.path.normpath(project_dir))
-    full_hash = hashlib.md5(project_dir.encode('utf-8')).hexdigest()[:8]
-    return f"{basename}_{full_hash}"
+    def paintEvent(self, event):
+        """绘制自定义边框和圆角"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 定义绘制区域
+        rect = self.rect()
+        path = QPainterPath()
+        path.addRoundedRect(rect, self.border_radius, self.border_radius)
+        
+        # 设置画笔（边框）
+        border_pen = QPen(QColor('#555555'))
+        border_pen.setWidth(1)
+        painter.setPen(border_pen)
+        
+        # 填充背景
+        painter.fillPath(path, QColor('#2d2d30'))
+        
+        # 绘制边框
+        painter.drawPath(path)
+        
+    def eventFilter(self, obj, event):
+        """处理鼠标事件以实现窗口拖动"""
+        if obj is self:
+            if event.type() == QEvent.MouseButtonPress:
+                if event.button() == Qt.LeftButton:
+                    self.old_pos = event.globalPosition().toPoint()
+                    return True
+            elif event.type() == QEvent.MouseMove:
+                if self.old_pos:
+                    delta = QPoint(event.globalPosition().toPoint() - self.old_pos)
+                    self.move(self.pos() + delta)
+                    self.old_pos = event.globalPosition().toPoint()
+                    return True
+            elif event.type() == QEvent.MouseButtonRelease:
+                if event.button() == Qt.LeftButton:
+                    self.old_pos = None
+                    return True
+        return super().eventFilter(obj, event)
 
-def feedback_ui(project_directory: str, prompt: str, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
+def feedback_ui(prompt: str, predefined_options: Optional[List[str]] = None, output_file: Optional[str] = None) -> Optional[FeedbackResult]:
     app = QApplication.instance() or QApplication()
     app.setPalette(get_dark_mode_palette(app))
     app.setStyle("Fusion")
-    ui = FeedbackUI(project_directory, prompt)
+    ui = FeedbackUI(prompt, predefined_options)
     result = ui.run()
 
     if output_file and result:
-        # Ensure the directory exists
+        # 确保目录存在
         os.makedirs(os.path.dirname(output_file) if os.path.dirname(output_file) else ".", exist_ok=True)
-        # Save the result to the output file
+        # 将结果保存到输出文件
         with open(output_file, "w") as f:
             json.dump(result, f)
         return None
@@ -568,14 +451,15 @@ def feedback_ui(project_directory: str, prompt: str, output_file: Optional[str] 
     return result
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the feedback UI")
-    parser.add_argument("--project-directory", default=os.getcwd(), help="The project directory to run the command in")
-    parser.add_argument("--prompt", default="I implemented the changes you requested.", help="The prompt to show to the user")
-    parser.add_argument("--output-file", help="Path to save the feedback result as JSON")
+    parser = argparse.ArgumentParser(description="运行反馈界面")
+    parser.add_argument("--prompt", default="我已实现您请求的更改。", help="向用户展示的提示信息")
+    parser.add_argument("--predefined-options", default="", help="预定义选项的管道分隔列表 (|||)")
+    parser.add_argument("--output-file", help="保存反馈结果为JSON的路径")
     args = parser.parse_args()
 
-    result = feedback_ui(args.project_directory, args.prompt, args.output_file)
+    predefined_options = [opt for opt in args.predefined_options.split("|||") if opt] if args.predefined_options else None
+    
+    result = feedback_ui(args.prompt, predefined_options, args.output_file)
     if result:
-        print(f"\nLogs collected: \n{result['logs']}")
-        print(f"\nFeedback received:\n{result['interactive_feedback']}")
+        print(f"\n收到反馈:\n{result['interactive_feedback']}")
     sys.exit(0)
