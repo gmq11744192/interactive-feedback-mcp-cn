@@ -1,147 +1,91 @@
-# 交互式反馈 MCP
+# 🗣️ Interactive Feedback MCP
 
-由 Fábio Ferreira ([@fabiomlferreira](https://x.com/fabiomlferreira)) 开发。
-查看 [dotcursorrules.com](https://dotcursorrules.com/) 获取更多 AI 开发增强工具。
+Simple [MCP Server](https://modelcontextprotocol.io/) to enable a human-in-the-loop workflow in AI-assisted development tools like [Cursor](https://www.cursor.com), [Cline](https://cline.bot) and [Windsurf](https://windsurf.com). This server allows you to easily provide feedback directly to the AI agent, bridging the gap between AI and you.
 
-这是一个简单的 [MCP 服务器](https://modelcontextprotocol.io/)，用于在 AI 辅助开发工具（如 [Cursor](https://www.cursor.com)）中实现人机协作工作流。该服务器允许您运行命令、查看输出结果，并直接向 AI 提供文本反馈。它还兼容 [Cline](https://cline.bot) 和 [Windsurf](https://windsurf.com)。
+ **Note:** This server is designed to run locally alongside the MCP client (e.g., Claude Desktop, VS Code), as it needs direct access to the user's operating system to display notifications.
 
-![交互式反馈 UI - 主视图](test.png)
+## 🖼️ Example
 
-## 提示工程
+![Interactive Feedback Example](https://raw.githubusercontent.com/poliva/interactive-feedback-mcp/refs/heads/main/.github/example.png)
 
-为获得最佳效果，请将以下内容添加到 AI 助手的自定义提示中，您应该将其添加到规则中或直接添加到提示中（例如，Cursor）：
+## 💡 Why Use This?
 
-> 当您想要提问时，始终调用 MCP `interactive_feedback`。  
-> 当您即将完成用户请求时，调用 MCP `interactive_feedback` 而不是简单地结束流程。
-> 持续调用 MCP 直到用户的反馈为空，然后结束请求。
+In environments like Cursor, every prompt you send to the LLM is treated as a distinct request — and each one counts against your monthly limit (e.g. 500 premium requests). This becomes inefficient when you're iterating on vague instructions or correcting misunderstood output, as each follow-up clarification triggers a full new request.
 
-### 详细用户规则示例
+This MCP server introduces a workaround: it allows the model to pause and request clarification before finalizing the response. Instead of completing the request, the model triggers a tool call (`interactive_feedback`) that opens an interactive feedback window. You can then provide more detail or ask for changes — and the model continues the session, all within a single request.
 
-以下是一个更详细的用户规则示例，您可以复制并添加到 Cursor 中：
+Under the hood, it's just a clever use of tool calls to defer the completion of the request. Since tool calls don't count as separate premium interactions, you can loop through multiple feedback cycles without consuming additional requests.
 
-```
-核心原则： 在处理任何任务时，AI 必须在关键节点使用 interactive_feedback 工具与用户进行互动，而不是在没有用户明确反馈的情况下擅自进行重大决策或完成任务阶段。
+Essentially, this helps your AI assistant _ask for clarification instead of guessing_, without wasting another request. That means fewer wrong answers, better performance, and less wasted API usage.
 
-触发条件与行为：
+- **💰 Reduced Premium API Calls:** Avoid wasting expensive API calls generating code based on guesswork.
+- **✅ Fewer Errors:** Clarification \_before\_ action means less incorrect code and wasted time.
+- **⏱️ Faster Cycles:** Quick confirmations beat debugging wrong guesses.
+- **🎮 Better Collaboration:** Turns one-way instructions into a dialogue, keeping you in control.
 
-任务开始和需求确认时： 在初步理解用户需求或开始新任务后，调用 interactive_feedback 工具，总结对任务的理解和初步计划，并询问用户是否有进一步的澄清或指示。
+## 🆕 新功能：图片和文件上传
 
-interactive_feedback 摘要应包含：对用户请求的理解、任务目标、以及需要用户确认的任何假设或不确定性。
+最新版本支持在反馈中附加图片和文件，使沟通更加直观高效：
 
-完成任务的某个主要阶段或步骤时： 在完成计划中的一个重要步骤、一个功能模块的实现、一个 Bug 的修复阶段（例如，分析完成、修复代码编写完成等），或任何您认为可以向用户报告进展并获取反馈的时机，调用 interactive_feedback 工具。
+- **📸 图片上传：** 可以上传截图、设计图或任何视觉参考，直接展示你的意图而不只是描述它。
+- **📁 文件附件：** 分享日志文件、配置文件或任何相关文档，帮助AI更好地理解上下文。
+- **📋 剪贴板支持：** 直接从剪贴板粘贴图片或文件路径，无需保存后再上传。
+- **🖱️ 拖放功能：** 简单地将图片或文件拖放到反馈窗口即可上传。
 
-interactive_feedback 摘要应包含：已完成的工作内容、当前的状态、以及下一步计划。
+这些功能极大地丰富了反馈的表达方式，使得复杂需求的沟通更加清晰和高效。
 
-遇到任何不确定、模棱两可或需要决策的情况时： 如果在任务执行过程中遇到任何规则冲突、技术难题、需要选择不同的实现方案、或者对下一步行动不确定时，必须立即停止并调用 interactive_feedback 工具向用户报告问题并寻求指导。
+## 🛠️ Tools
 
-interactive_feedback 摘要应包含：遇到的具体问题或不确定性、导致不确定的原因、以及您认为可能的解决方案或下一步选项（如果适用）。
+This server exposes the following tool via the Model Context Protocol (MCP):
 
-即将完成整个用户请求时： 在任务的所有执行阶段都已完成，即将向用户交付最终结果或结束对话之前，必须调用 interactive_feedback 工具进行最终报告和确认。
+- `interactive_feedback`: Asks the user a question and returns their answer. Can display predefined options.
 
-interactive_feedback 摘要应包含：整个任务的最终完成状态、结果摘要、以及是否还有其他需要处理的事项。
+## 📦 Installation
 
-interactive_feedback 摘要应包含：失败的工具名称、错误信息（如果可用）、失败发生时的上下文、以及您建议如何尝试解决或绕过问题。
-
-重要： 在执行上述规则时，务必在 interactive_feedback 的 summary 参数中提供清晰、简洁且具有足够上下文的信息，以便用户能够快速理解当前状态并提供有效的反馈。
-```
-
-这将确保您的 AI 助手在将任务标记为已完成之前，使用此 MCP 服务器请求用户反馈。
-
-## 💡 为什么使用它？
-通过指导助手与用户确认而不是分散到推测性的高成本工具调用中，该模块可以大幅减少平台（如 Cursor）上的高级请求数量（例如，OpenAI 工具调用）。在某些情况下，它有助于将多达 25 个工具调用整合为单个具有反馈意识的请求 —— 节省资源并提高性能。
-
-## 配置
-
-此 MCP 服务器使用 Qt 的 `QSettings` 按项目存储配置。这包括：
-*   要运行的命令。
-*   是否在该项目的下次启动时自动执行命令（参见"在下次运行时自动执行"复选框）。
-*   命令部分的可见状态（显示/隐藏）（这在切换时立即保存）。
-*   窗口几何形状和状态（一般 UI 首选项）。
-
-这些设置通常存储在特定于平台的位置（例如，Windows 上的注册表，macOS 上的 plist 文件，Linux 上的 `~/.config` 或 `~/.local/share` 中的配置文件），组织名称为 "FabioFerreira"，应用程序名称为 "InteractiveFeedbackMCP"，每个项目目录有一个唯一组。
-
-UI 中的"保存配置"按钮主要保存当前输入到命令输入字段中的命令，以及活动项目的"在下次运行时自动执行"复选框的状态。命令部分的可见性在您切换时自动保存。窗口大小和位置在应用程序关闭时保存。
-
-## 安装 (Cursor)
-
-![在 Cursor 上安装](https://github.com/noopstudios/interactive-feedback-mcp/blob/main/.github/cursor-example.jpg?raw=true)
-
-1.  **先决条件：**
-    *   Python 3.11 或更新版本。
-    *   [uv](https://github.com/astral-sh/uv) (Python 包管理器)。使用以下命令安装：
+1.  **Prerequisites:**
+    *   Python 3.11 or newer.
+    *   [uv](https://github.com/astral-sh/uv) (Python package manager). Install it with:
         *   Windows: `pip install uv`
-        *   Linux/Mac: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2.  **获取代码：**
-    *   克隆此仓库：
-        `git clone https://github.com/noopstudios/interactive-feedback-mcp.git`
-    *   或下载源代码。
-3.  **导航到目录：**
-    *   `cd path/to/interactive-feedback-mcp`
-4.  **安装依赖：**
-    *   `uv sync` (这会创建一个虚拟环境并安装包)
-5.  **运行 MCP 服务器：**
-    *   `uv run server.py`
-6.  **在 Cursor 中配置：**
-    *   Cursor 通常允许在其设置中指定自定义 MCP 服务器。您需要将 Cursor 指向此运行中的服务器。具体机制可能有所不同，因此请参阅 Cursor 的文档以添加自定义 MCP。
-    *   **手动配置（例如，通过 `mcp.json`）**
-        **记得将 `/Users/fabioferreira/Dev/scripts/interactive-feedback-mcp` 路径更改为您系统上克隆仓库的实际路径。**
+        *   Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+        *   macOS: `brew install uv`
+2.  **Get the code:**
+    *   Clone this repository:
+        `git clone https://github.com/pauoliva/interactive-feedback-mcp.git`
+    *   Or download the source code.
 
-        ```json
-        {
-          "mcpServers": {
-            "interactive-feedback-mcp": {
-              "command": "uv",
-              "args": [
-                "--directory",
-                "/Users/fabioferreira/Dev/scripts/interactive-feedback-mcp",
-                "run",
-                "server.py"
-              ],
-              "timeout": 600,
-              "autoApprove": [
-                "interactive_feedback"
-              ]
-            }
-          }
-        }
-        ```
-    *   在 Cursor 中配置时，您可以使用类似 `interactive-feedback-mcp` 的服务器标识符。
+## ⚙️ Configuration
 
-### 对于 Cline / Windsurf
-
-适用类似的设置原则。您需要在相应工具的 MCP 设置中配置服务器命令（例如，带有正确的 `--directory` 参数指向项目目录的 `uv run server.py`），使用 `interactive-feedback-mcp` 作为服务器标识符。
-
-## 开发
-
-要在开发模式下运行带有 Web 界面进行测试的服务器：
-
-```sh
-uv run fastmcp dev server.py
-```
-
-这将打开一个 Web 界面，允许您与 MCP 工具交互进行测试。
-
-## 可用工具
-
-以下是 AI 助手如何调用 `interactive_feedback` 工具的示例：
-
-```xml
-<use_mcp_tool>
-  <server_name>interactive-feedback-mcp</server_name>
-  <tool_name>interactive_feedback</tool_name>
-  <arguments>
-    {
-      "project_directory": "/path/to/your/project",
-      "summary": "我已实现了您请求的更改并重构了主模块。"
+1. Add the following configuration to your `claude_desktop_config.json` (Claude Desktop) or `mcp.json` (Cursor):
+**Remember to change the `/path/to/interactive-feedback-mcp` path to the actual path where you cloned the repository on your system.**
+```json
+{
+  "mcpServers": {
+    "interactive-feedback": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/interactive-feedback-mcp",
+        "run",
+        "server.py"
+      ],
+      "timeout": 600,
+      "autoApprove": [
+        "interactive_feedback"
+      ]
     }
-  </arguments>
-</use_mcp_tool>
+  }
+}
 ```
+2. Add the following to the custom rules in your AI assistant (in Cursor Settings > Rules > User Rules):
 
-## 致谢与联系
+> If requirements or instructions are unclear use the tool interactive_feedback to ask clarifying questions to the user before proceeding, do not make assumptions. Whenever possible, present the user with predefined options through the interactive_feedback MCP tool to facilitate quick decisions.
 
-如果您发现这个交互式反馈 MCP 有用，最好的表达感谢方式是在 [X @fabiomlferreira](https://x.com/fabiomlferreira) 上关注 Fábio Ferreira。
+> Whenever you're about to complete a user request, call the interactive_feedback tool to request user feedback before ending the process. If the feedback is empty you can end the request and don't call the tool in loop.
 
-如有任何问题、建议，或者只是想分享您如何使用它，请随时在 X 上联系！
+This will ensure your AI assistant always uses this MCP server to request user feedback when the prompt is unclear and before marking the task as completed.
 
-另外，查看 [dotcursorrules.com](https://dotcursorrules.com/) 获取更多关于增强 AI 辅助开发工作流的资源。
+## 🙏 Acknowledgements
+
+Developed by Fábio Ferreira ([@fabiomlferreira](https://x.com/fabiomlferreira)).
+
+Enhanced by Pau Oliva ([@pof](https://x.com/pof)) with ideas from Tommy Tong's [interactive-mcp](https://github.com/ttommyth/interactive-mcp).
